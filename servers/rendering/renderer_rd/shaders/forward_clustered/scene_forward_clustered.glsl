@@ -65,6 +65,10 @@ vec3 oct_to_vec3(vec2 e) {
 	return normalize(v);
 }
 
+bool mat_is_perspective(mat4 m) {
+	return m[2][3] == - 1.0;
+}
+
 /* Varyings */
 
 layout(location = 0) out vec3 vertex_interp;
@@ -110,6 +114,10 @@ layout(location = 9) out float dp_clip;
 #endif
 
 layout(location = 10) out flat uint instance_index_interp;
+
+layout(location = 11) out smooth float frag_depth;
+
+layout(location = 12) out flat float is_perspective;
 
 #ifdef USE_MULTIVIEW
 #ifdef has_VK_KHR_multiview
@@ -432,6 +440,9 @@ void vertex_shader(in uint instance_index, in bool is_multimesh, in uint multime
 	gl_Position = projection_matrix * vec4(vertex_interp, 1.0);
 #endif
 
+is_perspective = float(mat_is_perspective(projection_matrix));
+frag_depth = gl_Position.w + 1.0;
+
 #ifdef MOTION_VECTORS
 	screen_pos = gl_Position;
 #endif
@@ -544,6 +555,10 @@ layout(location = 9) in float dp_clip;
 #endif
 
 layout(location = 10) in flat uint instance_index_interp;
+
+layout(location = 11) in smooth float frag_depth;
+
+layout(location = 12) in flat float is_perspective;
 
 #ifdef USE_MULTIVIEW
 #ifdef has_VK_KHR_multiview
@@ -2210,6 +2225,17 @@ void main() {
 	if (dp_clip > 0.0)
 		discard;
 #endif
+
+	if (is_perspective != 0.0) {
+		// Logarithmic depth buffer.
+		gl_FragDepth =
+			log2(frag_depth) / (log2(1e19 + 1.0) / 2);
+	} else {
+		// Do not use a logarithmic depth buffer for orthographic projections.
+		// Essentially a no-op, but gl_FragDepth must be written to either in all
+		// code paths or not at all.
+		gl_FragDepth = gl_FragCoord.z;
+	}
 
 	fragment_shader(scene_data_block.data);
 }
